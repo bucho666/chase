@@ -9,6 +9,15 @@ from pygameframework import Direction
 from pygameframework import Job
 import sys
 
+class TerrainMap(object):
+    def __init__(self, width, height):
+        self._terrain = [[None for x in range(width)] for y in range(height)]
+
+    def render(self, screen):
+        for y, line in enumerate(self._terrain):
+            for x, tile in enumerate(line):
+                screen.write(Coordinate(x, y), '.', Color.SILVER)
+
 class ActorMap(object):
     def __init__(self, width, height):
         self._actor = dict()
@@ -70,10 +79,12 @@ class Actor(object):
             self._walk_wait_time -= self.SPEED_UNIT
 
 class MapHandler(object):
-    active_map = ActorMap(80, 20)
+    actor_map = ActorMap(80, 20)
+    terrain_map = TerrainMap(80, 20)
 
     def __init__(self):
-        self._map = self.active_map
+        self._actor_map = self.actor_map
+        self._terrain_map = self.terrain_map
 
 class PlayerHandler(object):
     _handlers = []
@@ -130,9 +141,9 @@ class WalkCommand(MapHandler, Activable):
 
     def execute(self, direction):
         if self.is_inactive(): return
-        pos = self._map.to_coordinate(self._actor, direction)
-        if self._map.actor(pos): return
-        self._map.move_actor(self._actor, direction)
+        pos = self._actor_map.to_coordinate(self._actor, direction)
+        if self._actor_map.actor(pos): return
+        self._actor_map.move_actor(self._actor, direction)
         if not self._run:
             self._wait()
 
@@ -148,8 +159,8 @@ class WalkMode(PlayerHandler, MapHandler):
 
     def initialize(self):
         x = 1
-        while self._map.actor(Coordinate(x, 1)): x += 1
-        self._map.put(Coordinate(x, 1), self._actor)
+        while self._actor_map.actor(Coordinate(x, 1)): x += 1
+        self._actor_map.put(Coordinate(x, 1), self._actor)
         return self
 
     def handle(self, controller, keyboard=None):
@@ -204,7 +215,8 @@ class Chace(Game, MapHandler):
 
     def render(self):
         self._screen.fill()
-        self._map.render(self._window)
+        self._terrain_map.render(self._window)
+        self._actor_map.render(self._window)
 
 if __name__ == '__main__':
     from pygameframework.framework import GameRunner
