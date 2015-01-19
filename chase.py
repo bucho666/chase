@@ -9,14 +9,41 @@ from pygameframework import Direction
 from pygameframework import Job
 import sys
 
+class AsciiTileLocator(object):
+    sheet = None
+    @classmethod
+    def provide(cls, new_sheet):
+        cls.sheet = new_sheet
+
+    @classmethod
+    def get_tile(cls, glyph, color):
+        return cls.sheet.get_tile(glyph, color)
+
+class Terrain(object):
+    (WALKABLE,) = range(1)
+    def __init__(self, glyph, color):
+        self._graphic = AsciiTileLocator.get_tile(glyph, color)
+        self._property = set()
+
+    def walkable(self):
+        self._property.add(self.WALKABLE)
+        return self
+
+    def is_walkable(self):
+        return self.WALKABLE in self._property
+
+    def lender(self, screen, coordinate):
+        screen.draw(coordinate, self._graphic)
+
 class TerrainMap(object):
     def __init__(self, width, height):
-        self._terrain = [[None for x in range(width)] for y in range(height)]
+        floor = Terrain('.', Color.SILVER).walkable()
+        self._terrain = [[floor for x in range(width)] for y in range(height)]
 
     def render(self, screen):
         for y, line in enumerate(self._terrain):
             for x, tile in enumerate(line):
-                screen.write(Coordinate(x, y), '.', Color.SILVER)
+                tile.lender(screen, Coordinate(x, y))
 
 class ActorMap(object):
     def __init__(self, width, height):
@@ -79,12 +106,13 @@ class Actor(object):
             self._walk_wait_time -= self.SPEED_UNIT
 
 class MapHandler(object):
-    actor_map = ActorMap(80, 20)
-    terrain_map = TerrainMap(80, 20)
+    _actor_map = None
+    _terrain_map = None
 
-    def __init__(self):
-        self._actor_map = self.actor_map
-        self._terrain_map = self.terrain_map
+    @classmethod
+    def initialize(cls):
+        cls._actor_map = ActorMap(80, 20)
+        cls._terrain_map = TerrainMap(80, 20)
 
 class PlayerHandler(object):
     _handlers = []
@@ -202,7 +230,9 @@ class Chace(Game, MapHandler):
 
     def initialize(self):
         tile_sheet = AsciiTileSheet().initialize('Courier New', 18)
-        actors = [Actor(tile_sheet.get_tile('@', color)) for color in self.PLAYER_COLOR]
+        AsciiTileLocator.provide(tile_sheet)
+        MapHandler.initialize()
+        actors = [Actor(AsciiTileLocator.get_tile('@', color)) for color in self.PLAYER_COLOR]
         handlers = [ReadyMode(actor) for actor in actors]
         PlayerHandler.set_handlers(handlers)
 
