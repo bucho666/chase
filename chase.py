@@ -113,22 +113,38 @@ class Actor(object):
         if self._walk_wait_time > self.WAIT_TIME_MIN:
             self._walk_wait_time -= self.SPEED_UNIT
 
-class MapHandler(object):
-    _actor_map = None
+class TerrainMapHandler(object):
     _terrain_map = None
+    _terrain_db = dict()
 
     @classmethod
     def initialize(cls):
-        cls._actor_map = ActorMap(80, 20)
         cls._terrain_map = TerrainMap(80, 20)
+        cls._initialize_db()
 
-class DungeonGenerator(MapHandler):
+    @classmethod
+    def _initialize_db(cls):
+        cls._terrain_db['.'] = Terrain('.', Color.SILVER).walkable()
+        cls._terrain_db['#'] = Terrain('#', Color.SILVER)
+
+    @classmethod
+    def put_terrain(cls, name, coordinate):
+        cls._terrain_map.put(cls._terrain_db[name], coordinate)
+
+class MapHandler(TerrainMapHandler):
+    _actor_map = None
+
+    @classmethod
+    def initialize(cls):
+        TerrainMapHandler.initialize()
+        cls._actor_map = ActorMap(80, 20)
+
+class DungeonGenerator(TerrainMapHandler):
     def __init__(self):
-        MapHandler.__init__(self)
+        TerrainMapHandler.__init__(self)
 
     def generate(self):
-        wall = Terrain('#', Color.SILVER)
-        self._terrain_map.put(wall, Coordinate(3, 4))
+        self.put_terrain('#', Coordinate(3, 4))
 
 class PlayerHandler(object):
     _handlers = []
@@ -275,5 +291,5 @@ if __name__ == '__main__':
         .initialize_controller(CONTROLLER_NUM, 'config.ini')\
         .set_font('Courier New', 18)\
         .set_fps(30)\
-        .set_caption('チェイス')
+        .set_caption('*** Chace ***')
     runner.run()
