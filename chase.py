@@ -45,6 +45,14 @@ class TerrainMap(object):
             for x, tile in enumerate(line):
                 tile.lender(screen, Coordinate(x, y))
 
+    def put(self, terrain, coordinate):
+        x, y = coordinate.xy()
+        self._terrain[y][x] = terrain
+
+    def is_walkable(self, coordinate):
+        x, y = coordinate.xy()
+        return self._terrain[y][x].is_walkable()
+
 class ActorMap(object):
     def __init__(self, width, height):
         self._actor = dict()
@@ -114,6 +122,14 @@ class MapHandler(object):
         cls._actor_map = ActorMap(80, 20)
         cls._terrain_map = TerrainMap(80, 20)
 
+class DungeonGenerator(MapHandler):
+    def __init__(self):
+        MapHandler.__init__(self)
+
+    def generate(self):
+        wall = Terrain('#', Color.SILVER)
+        self._terrain_map.put(wall, Coordinate(3, 4))
+
 class PlayerHandler(object):
     _handlers = []
 
@@ -170,6 +186,7 @@ class WalkCommand(MapHandler, Activable):
     def execute(self, direction):
         if self.is_inactive(): return
         pos = self._actor_map.to_coordinate(self._actor, direction)
+        if not self._terrain_map.is_walkable(pos): return
         if self._actor_map.actor(pos): return
         self._actor_map.move_actor(self._actor, direction)
         if not self._run:
@@ -232,6 +249,7 @@ class Chace(Game, MapHandler):
         tile_sheet = AsciiTileSheet().initialize('Courier New', 18)
         AsciiTileLocator.provide(tile_sheet)
         MapHandler.initialize()
+        DungeonGenerator().generate()
         actors = [Actor(AsciiTileLocator.get_tile('@', color)) for color in self.PLAYER_COLOR]
         handlers = [ReadyMode(actor) for actor in actors]
         PlayerHandler.set_handlers(handlers)
