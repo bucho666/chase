@@ -95,9 +95,12 @@ class Actor(object):
     SPEED_UNIT = 0.01
     WAIT_TIME_MAX = 1.0
     WAIT_TIME_MIN = 0.05
-    def __init__(self, graphic):
-        self._graphic = graphic
+    PLAYER_COLOR = (Color.RED, Color.AQUA, Color.LIME, Color.YELLOW)
+    def __init__(self, player_id):
+        self._player_id = player_id
+        self._graphic = AsciiTileLocator.get_tile('@', self.PLAYER_COLOR[self._player_id])
         self._walk_wait_time = 0.1
+        self._is_chacer = False
 
     def render(self, position, screen):
         screen.draw(position, self._graphic)
@@ -112,6 +115,23 @@ class Actor(object):
     def speed_up(self):
         if self._walk_wait_time > self.WAIT_TIME_MIN:
             self._walk_wait_time -= self.SPEED_UNIT
+
+    def is_chacer(self):
+        return self._is_chacer
+
+    def be_chacer(self):
+        self._graphic = AsciiTileLocator.get_tile('&', self.PLAYER_COLOR[self._player_id])
+        self._is_chacer = True
+
+    def be_runner(self):
+        self._graphic = AsciiTileLocator.get_tile('@', self.PLAYER_COLOR[self._player_id])
+        self._is_chacer = False
+
+    def touch(self, other):
+        if not self.is_chacer(): return
+        self.be_runner()
+        other.be_chacer()
+        # TODO set wait time to chacer
 
 class TerrainMapHandler(object):
     _terrain_map = None
@@ -214,7 +234,10 @@ class WalkCommand(MapHandler, Activable):
         if self.is_inactive(): return
         pos = self._actor_map.to_coordinate(self._actor, direction)
         if not self._terrain_map.is_walkable(pos): return
-        if self._actor_map.actor(pos): return
+        other = self._actor_map.actor(pos)
+        if other:
+            self._actor.touch(other)
+            return
         self._actor_map.move_actor(self._actor, direction)
         if not self._run:
             self._wait()
@@ -265,7 +288,6 @@ class Chace(Game, MapHandler):
     POSITION = Coordinate(0, 0)
     GRID_SIZE = Coordinate(10, 18)
     MAX_PLAYER = 4
-    PLAYER_COLOR = (Color.RED, Color.AQUA, Color.LIME, Color.YELLOW)
     def __init__(self):
         Game.__init__(self)
         MapHandler.__init__(self)
@@ -278,7 +300,8 @@ class Chace(Game, MapHandler):
         MapHandler.initialize()
         TerrainMapHandler.load('map.data')
         DungeonGenerator().generate()
-        actors = [Actor(AsciiTileLocator.get_tile('@', color)) for color in self.PLAYER_COLOR]
+        actors = [Actor(player_id) for player_id in range(self.MAX_PLAYER)]
+        actors[0].be_chacer() # TODO
         handlers = [ReadyMode(actor) for actor in actors]
         PlayerHandler.set_handlers(handlers)
 
