@@ -118,6 +118,17 @@ class TerrainMapHandler(object):
     _terrain_db = dict()
 
     @classmethod
+    def load(cls, filename):
+        f = open(filename, 'r')
+        lines = [line.strip() for line in f]
+        w, h = len(lines[0]), len(lines)
+        cls._terrain_map = TerrainMap(w, h)
+        for y, line in enumerate(lines):
+            for x, glyph in enumerate(line):
+                cls.put_terrain(glyph, Coordinate(x, y))
+        f.close()
+
+    @classmethod
     def initialize(cls):
         cls._terrain_map = TerrainMap(80, 20)
         cls._initialize_db()
@@ -265,6 +276,7 @@ class Chace(Game, MapHandler):
         tile_sheet = AsciiTileSheet().initialize('Courier New', 18)
         AsciiTileLocator.provide(tile_sheet)
         MapHandler.initialize()
+        TerrainMapHandler.load('map.data')
         DungeonGenerator().generate()
         actors = [Actor(AsciiTileLocator.get_tile('@', color)) for color in self.PLAYER_COLOR]
         handlers = [ReadyMode(actor) for actor in actors]
