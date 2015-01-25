@@ -301,9 +301,8 @@ class WalkMode(PlayerHandler, MapHandler):
         return self
 
     def handle(self, controller, keyboard=None):
-        down_keys =  controller.pressed_keys()
-        self._actor_move(down_keys)
-        self._actor_action(down_keys)
+        self._actor_move(controller.pressed_keys())
+        self._actor_action(controller.down_keys())
         if not keyboard: return
         down_keys =  keyboard.pressed_keys()
         if ord('q') in down_keys: sys.exit()
