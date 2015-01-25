@@ -6,7 +6,8 @@ from pygameframework import Color
 from pygameframework import AsciiTileSheet
 from pygameframework import Coordinate
 from pygameframework import Direction
-from pygameframework import Job
+from pygameframework import Key
+from pygameframework import Schedule
 import sys
 
 class AsciiTileLocator(object):
@@ -81,7 +82,7 @@ class ActorMap(object):
 
     def render(self, screen):
         for pos, actor in self._actor.items():
-            actor.render(pos, screen)
+            actor.render(screen, pos)
 
     def to_coordinate(self, actor, direction):
         c = self._coordinate[actor]
@@ -92,46 +93,117 @@ class ActorMap(object):
         self.put(c+direction, self.pickup(c))
 
 class Actor(object):
-    SPEED_UNIT = 0.01
-    WAIT_TIME_MAX = 1.0
-    WAIT_TIME_MIN = 0.05
-    PLAYER_COLOR = (Color.RED, Color.AQUA, Color.LIME, Color.YELLOW)
+    SPEED_UNIT = 1
+    WAIT_TIME_MAX = 16
+    WAIT_TIME_MIN = 0
+    PLAYER_COLOR = (Color.RED, Color.AQUA, Color.YELLOW, Color.LIME)
     def __init__(self, player_id):
         self._player_id = player_id
-        self._graphic = AsciiTileLocator.get_tile('@', self.PLAYER_COLOR[self._player_id])
-        self._walk_wait_time = 0.1
-        self._is_chacer = False
+        tile = AsciiTileLocator.get_tile('@', self.PLAYER_COLOR[self._player_id])
+        self._sprite = Sprite(tile)
+        self._walk_wait_frame = 3
+        self._is_chaser = False
+        self._visible = True
+        self._waiting = False
 
-    def render(self, position, screen):
-        screen.draw(position, self._graphic)
+    def render(self, screen, position):
+        if not self._visible: return
+        self._sprite.render(screen, position)
 
-    def walk_wait_time(self):
-        return self._walk_wait_time
+    def invisible(self):
+        if not self.is_chaser(): return
+        self._visible = False
+
+    def visible(self):
+        self._visible = True
+
+    def is_visible(self):
+        return self._visible
+
+    def flashing(self, interval):
+        self._sprite = FlashingSprite(self._sprite.graphic(), interval)
+
+    def clear_render_effect(self):
+        self._sprite = Sprite(self._sprite.graphic(), interval)
+
+    def wait_walk(self):
+        self.wait(self._walk_wait_frame)
 
     def speed_down(self):
-        if self._walk_wait_time < self.WAIT_TIME_MAX:
-            self._walk_wait_time += self.SPEED_UNIT
+        if self._walk_wait_frame < self.WAIT_TIME_MAX:
+            self._walk_wait_frame += self.SPEED_UNIT
 
     def speed_up(self):
-        if self._walk_wait_time > self.WAIT_TIME_MIN:
-            self._walk_wait_time -= self.SPEED_UNIT
+        if self._walk_wait_frame > self.WAIT_TIME_MIN:
+            self._walk_wait_frame -= self.SPEED_UNIT
 
-    def is_chacer(self):
-        return self._is_chacer
+    def is_chaser(self):
+        return self._is_chaser
 
-    def be_chacer(self):
-        self._graphic = AsciiTileLocator.get_tile('&', self.PLAYER_COLOR[self._player_id])
-        self._is_chacer = True
+    def be_chaser(self):
+        tile = AsciiTileLocator.get_tile('&', self.PLAYER_COLOR[self._player_id])
+        self._sprite.set_graphic(tile)
+        self._is_chaser = True
 
     def be_runner(self):
-        self._graphic = AsciiTileLocator.get_tile('@', self.PLAYER_COLOR[self._player_id])
-        self._is_chacer = False
+        tile = AsciiTileLocator.get_tile('@', self.PLAYER_COLOR[self._player_id])
+        self._sprite.set_graphic(tile)
+        self._is_chaser = False
+
+    def wait(self, wait_frame):
+        self.waiting()
+        Schedule(wait_frame).action(self.waiting).last(self.no_waiting)
+
+    def waiting(self):
+        self._waiting = True
+
+    def no_waiting(self):
+        self._waiting = False
+
+    def is_waiting(self):
+        return self._waiting
 
     def touch(self, other):
-        if not self.is_chacer(): return
+        if not self.is_chaser(): return
         self.be_runner()
-        other.be_chacer()
-        # TODO set wait time to chacer
+        other.be_chaser()
+        fleeze_tick = 150
+        other.wait(fleeze_tick)
+        Schedule(fleeze_tick).action(Flashing(other, 3).tick).last(other.visible)
+
+class Flashing(object):
+    def __init__(self, actor, interval):
+        self._actor = actor
+        self._interval = interval
+        self._elapse = 0
+
+    def tick(self):
+        self._elapse += 1
+        if self._elapse < self._interval: return
+        self._elapse = 0
+        if self._actor.is_visible(): self._actor.invisible()
+        else: self._actor.visible()
+
+class Sprite(object):
+    def __init__(self, graphic):
+        self._graphic = graphic
+
+    def set_graphic(self, graphic):
+        self._graphic = graphic
+
+    def graphic(self):
+        return self._graphic
+
+    def render(self, screen, position):
+        screen.draw(position, self._graphic)
+
+class FlashingSprite(Sprite):
+    def __init__(self, graphic, interval):
+        Sprite.__init__(self, graphic)
+        self._interval = interval
+
+    def render(self, screen, position):
+        screen.draw(position, self._graphic)
 
 class TerrainMapHandler(object):
     _terrain_map = None
@@ -196,33 +268,8 @@ class PlayerHandler(object):
             self._handlers[i] = new_handle
             break
 
-class Activable(object):
-    def __init__(self, state=True):
-        self._is_active = state
-
-    def is_active(self):
-        return self._is_active
-
-    def is_inactive(self):
-        return not self.is_active()
-
-    def active(self):
-        self._is_active = True
-
-    def inactive(self):
-        self._is_active = False
-
-class WillActive(Job):
-    def __init__(self, time, target):
-        Job.__init__(self, time)
-        self._target = target
-
-    def job(self):
-        self._target.active()
-
-class WalkCommand(MapHandler, Activable):
+class WalkCommand(MapHandler):
     def __init__(self, actor):
-        Activable.__init__(self)
         MapHandler.__init__(self)
         self._actor = actor
         self._run = False
@@ -231,7 +278,7 @@ class WalkCommand(MapHandler, Activable):
         self._run = mode
 
     def execute(self, direction):
-        if self.is_inactive(): return
+        if self._actor.is_waiting(): return
         pos = self._actor_map.to_coordinate(self._actor, direction)
         if not self._terrain_map.is_walkable(pos): return
         other = self._actor_map.actor(pos)
@@ -239,12 +286,7 @@ class WalkCommand(MapHandler, Activable):
             self._actor.touch(other)
             return
         self._actor_map.move_actor(self._actor, direction)
-        if not self._run:
-            self._wait()
-
-    def _wait(self):
-        self.inactive()
-        WillActive(self._actor.walk_wait_time(), self)
+        self._actor.wait_walk()
 
 class WalkMode(PlayerHandler, MapHandler):
     def __init__(self, actor):
@@ -261,6 +303,7 @@ class WalkMode(PlayerHandler, MapHandler):
     def handle(self, controller, keyboard=None):
         down_keys =  controller.pressed_keys()
         self._actor_move(down_keys)
+        self._actor_action(down_keys)
         if not keyboard: return
         down_keys =  keyboard.pressed_keys()
         if ord('q') in down_keys: sys.exit()
@@ -274,6 +317,10 @@ class WalkMode(PlayerHandler, MapHandler):
         elif 'down' in down_keys: self._walk.execute(Direction.DOWN)
         elif 'up' in down_keys: self._walk.execute(Direction.UP)
         elif 'right' in down_keys: self._walk.execute(Direction.RIGHT)
+
+    def _actor_action(self, down_keys):
+        if 'speed_up' in down_keys: self._actor.speed_up()
+        if 'speed_down' in down_keys: self._actor.speed_down()
 
 class ReadyMode(PlayerHandler):
     def __init__(self, actor):
@@ -301,11 +348,12 @@ class Chace(Game, MapHandler):
         TerrainMapHandler.load('map.data')
         DungeonGenerator().generate()
         actors = [Actor(player_id) for player_id in range(self.MAX_PLAYER)]
-        actors[0].be_chacer() # TODO
+        actors[0].be_chaser() # TODO
         handlers = [ReadyMode(actor) for actor in actors]
         PlayerHandler.set_handlers(handlers)
 
     def update(self):
+        if Key.ESCAPE in self._keyboard.pressed_keys(): sys.exit()
         PlayerHandler.update(self._controllers, self._keyboard)
 
     def set_screen(self, screen):
