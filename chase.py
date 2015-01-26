@@ -104,7 +104,7 @@ class Actor(object):
         self._walk_wait_frame = 3
         self._is_chaser = False
         self._visible = True
-        self._waiting = False
+        self._waiting = 0
 
     def render(self, screen, position):
         if not self._visible: return
@@ -152,16 +152,17 @@ class Actor(object):
 
     def wait(self, wait_frame):
         self.waiting()
-        Schedule(wait_frame).action(self.waiting).last(self.no_waiting)
+        Schedule(wait_frame).last(self.no_waiting)
 
     def waiting(self):
-        self._waiting = True
+        self._waiting += 1
 
     def no_waiting(self):
-        self._waiting = False
+        if self._waiting is 0: return
+        self._waiting -= 1
 
     def is_waiting(self):
-        return self._waiting
+        return self._waiting > 0
 
     def touch(self, other):
         if not self.is_chaser(): return
