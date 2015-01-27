@@ -92,33 +92,50 @@ class ActorMap(object):
         c = self._coordinate[actor]
         self.put(c+direction, self.pickup(c))
 
+class Status(object):
+    def __init__(self, status):
+        self._status = dict()
+        for state in status: self._status[state] = 0 
+
+    def is_active(self, name):
+        return self._status[name] > 0
+
+    def is_inactive(self, name):
+        return not self.active(name)
+
+    def set_status(self, name):
+        self._status[name] += 1 
+
+    def unset_status(self, name):
+        if self._status[name] is 0: return
+        self._status[name] -= 1
+
 class Actor(object):
     SPEED_UNIT = 1
     WAIT_TIME_MAX = 16
     WAIT_TIME_MIN = 0
     PLAYER_COLOR = (Color.RED, Color.AQUA, Color.YELLOW, Color.LIME)
+    CHASER, WAIT, INVISIBLE, FORCE_VISIBLE = range(4)
     def __init__(self, player_id):
         self._player_id = player_id
         tile = AsciiTileLocator.get_tile('@', self.PLAYER_COLOR[self._player_id])
         self._sprite = Sprite(tile)
         self._walk_wait_frame = 3
-        self._is_chaser = False
-        self._visible = True
-        self._waiting = 0
+        self._status = Status([self.CHASER, self.WAIT, self.INVISIBLE, self.FORCE_VISIBLE])
 
     def render(self, screen, position):
-        if not self._visible: return
+        if self.is_invisible(): return
         self._sprite.render(screen, position)
 
     def invisible(self):
         if not self.is_chaser(): return
-        self._visible = False
+        self._status.set_status(self.INVISIBLE)
 
     def visible(self):
-        self._visible = True
+        self._status.unset_status(self.INVISIBLE)
 
-    def is_visible(self):
-        return self._visible
+    def is_invisible(self):
+        return self._status.is_active(self.INVISIBLE)
 
     def flashing(self, interval):
         self._sprite = FlashingSprite(self._sprite.graphic(), interval)
@@ -138,31 +155,30 @@ class Actor(object):
             self._walk_wait_frame -= self.SPEED_UNIT
 
     def is_chaser(self):
-        return self._is_chaser
+        return self._status.is_active(self.CHASER)
 
     def be_chaser(self):
         tile = AsciiTileLocator.get_tile('&', self.PLAYER_COLOR[self._player_id])
         self._sprite.set_graphic(tile)
-        self._is_chaser = True
+        self._status.set_status(self.CHASER)
 
     def be_runner(self):
         tile = AsciiTileLocator.get_tile('@', self.PLAYER_COLOR[self._player_id])
         self._sprite.set_graphic(tile)
-        self._is_chaser = False
+        self._status.unset_status(self.CHASER)
 
     def wait(self, wait_frame):
-        self.waiting()
-        Schedule(wait_frame).last(self.no_waiting)
+        self.be_waiting()
+        Schedule(wait_frame).last(self.be_nowaiting)
 
-    def waiting(self):
-        self._waiting += 1
+    def be_waiting(self):
+        self._status.set_status(self.WAIT)
 
-    def no_waiting(self):
-        if self._waiting is 0: return
-        self._waiting -= 1
+    def be_nowaiting(self):
+        self._status.unset_status(self.WAIT)
 
     def is_waiting(self):
-        return self._waiting > 0
+        return self._status.is_active(self.WAIT)
 
     def touch(self, other):
         if not self.is_chaser(): return
@@ -182,8 +198,8 @@ class Flashing(object):
         self._elapse += 1
         if self._elapse < self._interval: return
         self._elapse = 0
-        if self._actor.is_visible(): self._actor.invisible()
-        else: self._actor.visible()
+        if self._actor.is_invisible(): self._actor.visible()
+        else: self._actor.invisible()
 
 class Sprite(object):
     def __init__(self, graphic):
