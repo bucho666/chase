@@ -276,7 +276,7 @@ class TerrainMapHandler(object):
     @classmethod
     def load(cls, filename):
         f = open(filename, 'r')
-        lines = [line.strip() for line in f]
+        lines = [line.rstrip('\n') for line in f]
         w, h = len(lines[0]), len(lines)
         cls._terrain_map = TerrainMap(w, h)
         for y, line in enumerate(lines):
@@ -293,6 +293,7 @@ class TerrainMapHandler(object):
     def _initialize_db(cls):
         cls._terrain_db['.'] = Terrain('.', Color.SILVER).walkable()
         cls._terrain_db['#'] = Terrain('#', Color.SILVER)
+        cls._terrain_db[' '] = Terrain(' ', Color.BLACK)
 
     @classmethod
     def put_terrain(cls, name, coordinate):
