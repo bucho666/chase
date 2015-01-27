@@ -110,8 +110,35 @@ class Status(object):
         if self._status[name] is 0: return
         self._status[name] -= 1
 
+class InvisibleSkill(object):
+    def __init__(self, actor):
+        self._actor = actor
+        self._active = False
+
+    def active(self):
+        if self._active: return
+        self._actor.be_invisible()
+        self._active = True
+
+    def inactive(self):
+        self._actor.be_visible()
+        self._active = False
+
+class DashSkill(object):
+    def __init__(self, actor):
+        self._actor = actor
+        self._active = False
+
+    def active(self):
+        if self._active: return
+        self._actor.speed_up()
+        self._active = True
+
+    def inactive(self):
+        self._actor.speed_down()
+        self._active = False
+
 class Actor(object):
-    SPEED_UNIT = 1
     WAIT_TIME_MAX = 16
     WAIT_TIME_MIN = 0
     PLAYER_COLOR = (Color.RED, Color.AQUA, Color.YELLOW, Color.LIME)
@@ -122,16 +149,16 @@ class Actor(object):
         self._sprite = Sprite(tile)
         self._walk_wait_frame = 3
         self._status = Status([self.CHASER, self.WAIT, self.INVISIBLE, self.FORCE_VISIBLE])
+        self._skill = InvisibleSkill(self)
 
     def render(self, screen, position):
-        if self.is_invisible(): return
-        self._sprite.render(screen, position)
+        if self.is_force_visible() or not self.is_invisible():
+            self._sprite.render(screen, position)
 
-    def invisible(self):
-        if not self.is_chaser(): return
+    def be_invisible(self):
         self._status.set_status(self.INVISIBLE)
 
-    def visible(self):
+    def be_visible(self):
         self._status.unset_status(self.INVISIBLE)
 
     def is_invisible(self):
@@ -147,12 +174,10 @@ class Actor(object):
         self.wait(self._walk_wait_frame)
 
     def speed_down(self):
-        if self._walk_wait_frame < self.WAIT_TIME_MAX:
-            self._walk_wait_frame += self.SPEED_UNIT
+        self._walk_wait_frame = 3
 
     def speed_up(self):
-        if self._walk_wait_frame > self.WAIT_TIME_MIN:
-            self._walk_wait_frame -= self.SPEED_UNIT
+        self._walk_wait_frame -= self.WAIT_TIME_MAX
 
     def is_chaser(self):
         return self._status.is_active(self.CHASER)
@@ -161,11 +186,15 @@ class Actor(object):
         tile = AsciiTileLocator.get_tile('&', self.PLAYER_COLOR[self._player_id])
         self._sprite.set_graphic(tile)
         self._status.set_status(self.CHASER)
+        self._skill.inactive()
+        self._skill = DashSkill(self)
 
     def be_runner(self):
         tile = AsciiTileLocator.get_tile('@', self.PLAYER_COLOR[self._player_id])
         self._sprite.set_graphic(tile)
         self._status.unset_status(self.CHASER)
+        self._skill.inactive()
+        self._skill = InvisibleSkill(self)
 
     def wait(self, wait_frame):
         self.be_waiting()
@@ -180,13 +209,31 @@ class Actor(object):
     def is_waiting(self):
         return self._status.is_active(self.WAIT)
 
+    def be_force_visible(self):
+        self._status.set_status(self.FORCE_VISIBLE)
+
+    def be_no_force_visible(self):
+        self._status.unset_status(self.FORCE_VISIBLE)
+
+    def is_force_visible(self):
+        return self._status.is_active(self.FORCE_VISIBLE)
+
     def touch(self, other):
         if not self.is_chaser(): return
         self.be_runner()
         other.be_chaser()
         fleeze_tick = 150
         other.wait(fleeze_tick)
-        Schedule(fleeze_tick).action(Flashing(other, 3).tick).last(other.visible)
+        other.be_invisible()
+        Schedule(fleeze_tick).last(other.be_visible)
+        Schedule(fleeze_tick).action(Flashing(other, 3).tick).last(other.be_no_force_visible)
+
+    def use_skill(self):
+        self._skill.active()
+
+    def unuse_skill(self):
+        self._skill.inactive()
+
 
 class Flashing(object):
     def __init__(self, actor, interval):
@@ -198,8 +245,8 @@ class Flashing(object):
         self._elapse += 1
         if self._elapse < self._interval: return
         self._elapse = 0
-        if self._actor.is_invisible(): self._actor.visible()
-        else: self._actor.invisible()
+        if self._actor.is_force_visible(): self._actor.be_no_force_visible()
+        else: self._actor.be_force_visible()
 
 class Sprite(object):
     def __init__(self, graphic):
@@ -319,7 +366,6 @@ class WalkMode(PlayerHandler, MapHandler):
 
     def handle(self, controller, keyboard=None):
         self._actor_move(controller.pressed_keys())
-        self._actor_action(controller.down_keys())
         if not keyboard: return
         down_keys =  keyboard.pressed_keys()
         if ord('q') in down_keys: sys.exit()
@@ -333,10 +379,8 @@ class WalkMode(PlayerHandler, MapHandler):
         elif 'down' in down_keys: self._walk.execute(Direction.DOWN)
         elif 'up' in down_keys: self._walk.execute(Direction.UP)
         elif 'right' in down_keys: self._walk.execute(Direction.RIGHT)
-
-    def _actor_action(self, down_keys):
-        if 'speed_up' in down_keys: self._actor.speed_up()
-        if 'speed_down' in down_keys: self._actor.speed_down()
+        if 'skill' in down_keys: self._actor.use_skill()
+        else: self._actor.unuse_skill()
 
 class ReadyMode(PlayerHandler):
     def __init__(self, actor):
