@@ -70,6 +70,9 @@ class ActorMap(object):
             return self._actor[coordinate]
         return None
 
+    def count_actors(self):
+        return len(self._actor)
+
     def coordinate_of(self, actor):
         try:
             return self._coordinate[actor]
@@ -360,6 +363,7 @@ class WalkMode(PlayerHandler, MapHandler):
         self._walk = WalkCommand(actor)
 
     def initialize(self):
+        if self._actor_map.count_actors() is 0: self._actor.be_chaser()
         x = 1
         while self._actor_map.actor(Coordinate(x, 1)): x += 1
         self._actor_map.put(Coordinate(x, 1), self._actor)
@@ -409,7 +413,6 @@ class Chase(Game, MapHandler):
         TerrainMapHandler.load('map.data')
         DungeonGenerator().generate()
         actors = [Actor(player_id) for player_id in range(self.MAX_PLAYER)]
-        actors[0].be_chaser() # TODO
         handlers = [ReadyMode(actor) for actor in actors]
         PlayerHandler.set_handlers(handlers)
 
