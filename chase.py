@@ -9,6 +9,7 @@ from pygameframework import Direction
 from pygameframework import Key
 from pygameframework import Schedule
 import sys
+import random
 
 class AsciiTileLocator(object):
     sheet = None
@@ -53,6 +54,12 @@ class TerrainMap(object):
     def is_walkable(self, coordinate):
         x, y = coordinate.xy()
         return self._terrain[y][x].is_walkable()
+
+    def walkable_coordinates(self):
+        for y, line in enumerate(self._terrain):
+            for x, tile in enumerate(line):
+                if self._terrain[y][x].is_walkable():
+                    yield Coordinate(x, y)
 
 class ActorMap(object):
     def __init__(self, width, height):
@@ -237,7 +244,6 @@ class Actor(object):
     def unuse_skill(self):
         self._skill.inactive()
 
-
 class Flashing(object):
     def __init__(self, actor, interval):
         self._actor = actor
@@ -310,6 +316,10 @@ class MapHandler(TerrainMapHandler):
         TerrainMapHandler.initialize()
         cls._actor_map = ActorMap(80, 20)
 
+    def choice_random_open_coordinate(self):
+       return random.choice([c for c in self._terrain_map.walkable_coordinates()\
+               if not self._actor_map.actor(c)])
+
 class DungeonGenerator(TerrainMapHandler):
     def __init__(self):
         TerrainMapHandler.__init__(self)
@@ -364,9 +374,8 @@ class WalkMode(PlayerHandler, MapHandler):
 
     def initialize(self):
         if self._actor_map.count_actors() is 0: self._actor.be_chaser()
-        x = 1
-        while self._actor_map.actor(Coordinate(x, 1)): x += 1
-        self._actor_map.put(Coordinate(x, 1), self._actor)
+        self._actor_map.put(self.choice_random_open_coordinate(),
+            self._actor)
         return self
 
     def handle(self, controller, keyboard=None):
