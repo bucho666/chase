@@ -392,7 +392,7 @@ class ReadyMode(PlayerHandler):
         if 'start' not in down_keys: return
         self.change_handle(self, WalkMode(self._actor).initialize())
 
-class Chace(Game, MapHandler):
+class Chase(Game, MapHandler):
     POSITION = Coordinate(0, 0)
     GRID_SIZE = Coordinate(10, 18)
     MAX_PLAYER = 4
@@ -429,11 +429,11 @@ class Chace(Game, MapHandler):
 if __name__ == '__main__':
     from pygameframework.framework import GameRunner
     CONTROLLER_NUM = 4
-    runner = GameRunner(Chace())\
+    runner = GameRunner(Chase())\
         .initialize_system()\
         .initialize_screen(640, 480, 16)\
         .initialize_controller(CONTROLLER_NUM, 'config.ini')\
         .set_font('Courier New', 18)\
         .set_fps(30)\
-        .set_caption('*** Chace ***')
+        .set_caption('*** Chase ***')
     runner.run()
