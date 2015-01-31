@@ -80,6 +80,10 @@ class ActorMap(object):
     def count_actors(self):
         return len(self._actor)
 
+    def actors(self):
+        for actor in self._actor.values():
+            yield actor
+
     def coordinate_of(self, actor):
         try:
             return self._coordinate[actor]
@@ -148,15 +152,16 @@ class DashSkill(object):
         self._actor.speed_down()
         self._active = False
 
+
 class Actor(object):
     WAIT_TIME_MAX = 16
     WAIT_TIME_MIN = 0
     PLAYER_COLOR = (Color.RED, Color.AQUA, Color.YELLOW, Color.LIME)
+    CHASER_GLYPH, RUNNER_GLYPH = ('&', '@')
     CHASER, WAIT, INVISIBLE, FORCE_VISIBLE = range(4)
     def __init__(self, player_id):
         self._player_id = player_id
-        tile = AsciiTileLocator.get_tile('@', self.PLAYER_COLOR[self._player_id])
-        self._sprite = Sprite(tile)
+        self._sprite = Sprite(self.RUNNER_GLYPH, self.PLAYER_COLOR[player_id])
         self._walk_wait_frame = 3
         self._status = Status([self.CHASER, self.WAIT, self.INVISIBLE, self.FORCE_VISIBLE])
         self._skill = InvisibleSkill(self)
@@ -174,12 +179,6 @@ class Actor(object):
     def is_invisible(self):
         return self._status.is_active(self.INVISIBLE)
 
-    def flashing(self, interval):
-        self._sprite = FlashingSprite(self._sprite.graphic(), interval)
-
-    def clear_render_effect(self):
-        self._sprite = Sprite(self._sprite.graphic(), interval)
-
     def wait_walk(self):
         self.wait(self._walk_wait_frame)
 
@@ -192,16 +191,17 @@ class Actor(object):
     def is_chaser(self):
         return self._status.is_active(self.CHASER)
 
+    def is_runner(self):
+        return not self.is_chaser()
+
     def be_chaser(self):
-        tile = AsciiTileLocator.get_tile('&', self.PLAYER_COLOR[self._player_id])
-        self._sprite.set_graphic(tile)
+        self._sprite.change_glyph(self.CHASER_GLYPH)
         self._status.set_status(self.CHASER)
         self._skill.inactive()
         self._skill = DashSkill(self)
 
     def be_runner(self):
-        tile = AsciiTileLocator.get_tile('@', self.PLAYER_COLOR[self._player_id])
-        self._sprite.set_graphic(tile)
+        self._sprite.change_glyph(self.RUNNER_GLYPH)
         self._status.unset_status(self.CHASER)
         self._skill.inactive()
         self._skill = InvisibleSkill(self)
@@ -232,11 +232,15 @@ class Actor(object):
         if not self.is_chaser(): return
         self.be_runner()
         other.be_chaser()
-        fleeze_tick = 150
-        other.wait(fleeze_tick)
-        other.be_invisible()
-        Schedule(fleeze_tick).last(other.be_visible)
-        Schedule(fleeze_tick).action(Flashing(other, 3).tick).last(other.be_no_force_visible)
+        other.freeze()
+
+    def freeze(self, frame=150):
+        self.wait(frame)
+        self.flush(Color.BLACK, frame=frame, interval=5)
+
+    def flush(self, color, interval=3, frame=150):
+        flushing = Flushing(self._sprite, color, interval)
+        Schedule(frame).action(flushing.update).last(flushing.stop)
 
     def use_skill(self):
         self._skill.active()
@@ -244,39 +248,50 @@ class Actor(object):
     def unuse_skill(self):
         self._skill.inactive()
 
-class Flashing(object):
-    def __init__(self, actor, interval):
-        self._actor = actor
-        self._interval = interval
-        self._elapse = 0
+# TODO FrameCounterクラス作成
 
-    def tick(self):
-        self._elapse += 1
-        if self._elapse < self._interval: return
-        self._elapse = 0
-        if self._actor.is_force_visible(): self._actor.be_no_force_visible()
-        else: self._actor.be_force_visible()
+class Flushing(object):
+    def __init__(self, sprite, color, interval):
+        self._sprite = sprite
+        self._original_color = sprite.color()
+        self._change_color = color
+        self._interval = interval
+        self._frame_counter = 0
+
+    def update(self):
+        self._frame_counter += 1
+        self._frame_counter %= self._interval
+        if self._frame_counter: return
+        if self._sprite.color() is self._original_color:
+            self._sprite.change_color(self._change_color)
+        else:
+            self._sprite.change_color(self._original_color)
+
+    def stop(self):
+        self._sprite.change_color(self._original_color)
 
 class Sprite(object):
-    def __init__(self, graphic):
-        self._graphic = graphic
+    def __init__(self, glyph, color):
+        self._graphic = AsciiTileLocator.get_tile(glyph, color)
+        self._glyph = glyph
+        self._color = color
 
-    def set_graphic(self, graphic):
-        self._graphic = graphic
-
-    def graphic(self):
-        return self._graphic
-
-    def render(self, screen, position):
-        screen.draw(position, self._graphic)
-
-class FlashingSprite(Sprite):
-    def __init__(self, graphic, interval):
-        Sprite.__init__(self, graphic)
-        self._interval = interval
+    def color(self):
+        return self._color
 
     def render(self, screen, position):
         screen.draw(position, self._graphic)
+
+    def change_color(self, new_color):
+        self._color = new_color
+        self._update()
+
+    def change_glyph(self, new_glyph):
+        self._glyph = new_glyph
+        self._update()
+
+    def _update(self):
+        self._graphic = AsciiTileLocator.get_tile(self._glyph, self._color)
 
 class TerrainMapHandler(object):
     _terrain_map = None
@@ -376,6 +391,11 @@ class WalkMode(PlayerHandler, MapHandler):
         if self._actor_map.count_actors() is 0: self._actor.be_chaser()
         self._actor_map.put(self.choice_random_open_coordinate(),
             self._actor)
+        for actor in self._actor_map.actors():
+            if actor is self._actor: continue
+            if actor.is_runner(): continue
+            actor.freeze()
+        self._actor.flush(Color.WHITE, interval=2, frame=60)
         return self
 
     def handle(self, controller, keyboard=None):
