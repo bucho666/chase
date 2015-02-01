@@ -145,13 +145,12 @@ class DashSkill(object):
 
     def active(self):
         if self._active: return
-        self._actor.speed_up()
+        self._actor.running()
         self._active = True
 
     def inactive(self):
-        self._actor.speed_down()
+        self._actor.walking()
         self._active = False
-
 
 class Actor(object):
     WAIT_TIME_MAX = 16
@@ -160,7 +159,6 @@ class Actor(object):
     CHASER_GLYPH, RUNNER_GLYPH = ('&', '@')
     CHASER, WAIT, INVISIBLE, FORCE_VISIBLE = range(4)
     def __init__(self, player_id):
-        self._player_id = player_id
         self._sprite = Sprite(self.RUNNER_GLYPH, self.PLAYER_COLOR[player_id])
         self._walk_wait_frame = 3
         self._status = Status([self.CHASER, self.WAIT, self.INVISIBLE, self.FORCE_VISIBLE])
@@ -182,11 +180,11 @@ class Actor(object):
     def wait_walk(self):
         self.wait(self._walk_wait_frame)
 
-    def speed_down(self):
-        self._walk_wait_frame = 3
+    def walking(self):
+        self._walk_wait_frame = 2
 
-    def speed_up(self):
-        self._walk_wait_frame -= self.WAIT_TIME_MAX
+    def running(self):
+        self._walk_wait_frame = 1
 
     def is_chaser(self):
         return self._status.is_active(self.CHASER)
@@ -248,20 +246,28 @@ class Actor(object):
     def unuse_skill(self):
         self._skill.inactive()
 
-# TODO FrameCounterクラス作成
+class Counter(object):
+    def __init__(self, end):
+        self._end = end
+        self._current = 0
+
+    def tick(self):
+        self._current += 1
+        self._current %= self._end
+
+    def is_over(self):
+        return self._current is 0
 
 class Flushing(object):
     def __init__(self, sprite, color, interval):
         self._sprite = sprite
         self._original_color = sprite.color()
         self._change_color = color
-        self._interval = interval
-        self._frame_counter = 0
+        self._frame_counter = Counter(interval)
 
     def update(self):
-        self._frame_counter += 1
-        self._frame_counter %= self._interval
-        if self._frame_counter: return
+        self._frame_counter.tick()
+        if not self._frame_counter.is_over(): return
         if self._sprite.color() is self._original_color:
             self._sprite.change_color(self._change_color)
         else:
