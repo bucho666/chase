@@ -38,14 +38,14 @@ class Terrain(object):
     (WALKABLE,) = range(1)
     def __init__(self, glyph, color):
         self._graphic = AsciiTileLocator.get_tile(glyph, color)
-        self._property = set()
+        self._properties = set()
 
     def walkable(self):
-        self._property.add(self.WALKABLE)
+        self._properties.add(self.WALKABLE)
         return self
 
     def is_walkable(self):
-        return self.WALKABLE in self._property
+        return self.WALKABLE in self._properties
 
     def lender(self, screen, coordinate):
         screen.draw(coordinate, self._graphic)
@@ -119,24 +119,6 @@ class ActorMap(object):
         c = self._coordinate[actor]
         self.put(c+direction, self.pickup(c))
 
-class Status(object):
-    def __init__(self, status):
-        self._status = dict()
-        for state in status: self._status[state] = 0 
-
-    def is_active(self, name):
-        return self._status[name] > 0
-
-    def is_inactive(self, name):
-        return not self.active(name)
-
-    def set_status(self, name):
-        self._status[name] += 1 
-
-    def unset_status(self, name):
-        if self._status[name] is 0: return
-        self._status[name] -= 1
-
 class InvisibleSkill(object):
     def __init__(self, actor):
         self._actor = actor
@@ -170,84 +152,46 @@ class Actor(object):
     WAIT_TIME_MIN = 0
     PLAYER_COLOR = (Color.RED, Color.AQUA, Color.YELLOW, Color.LIME)
     CHASER_GLYPH, RUNNER_GLYPH = ('&', '@')
-    CHASER, WAIT, INVISIBLE, FORCE_VISIBLE = range(4)
     def __init__(self, player_id):
         self._sprite = Sprite(self.RUNNER_GLYPH, self.PLAYER_COLOR[player_id])
-        self._walk_wait_frame = 3
-        self._status = Status([self.CHASER, self.WAIT, self.INVISIBLE, self.FORCE_VISIBLE])
-        self._skill = InvisibleSkill(self)
+        self._status = Status()
+        self._skill = InvisibleSkill(self._status)
 
     def render(self, screen, position):
-        if self.is_force_visible() or not self.is_invisible():
-            self._sprite.render(screen, position)
-
-    def be_invisible(self):
-        self._status.set_status(self.INVISIBLE)
-
-    def be_visible(self):
-        self._status.unset_status(self.INVISIBLE)
-
-    def is_invisible(self):
-        return self._status.is_active(self.INVISIBLE)
-
-    def wait_walk(self):
-        self.wait(self._walk_wait_frame)
-
-    def walking(self):
-        self._walk_wait_frame = 2
-
-    def running(self):
-        self._walk_wait_frame = 1
+        if self._status.is_invisible(): return
+        self._sprite.render(screen, position)
 
     def is_chaser(self):
-        return self._status.is_active(self.CHASER)
-
-    def is_runner(self):
-        return not self.is_chaser()
+        return self._status.is_chaser()
 
     def be_chaser(self):
         self._sprite.change_glyph(self.CHASER_GLYPH)
-        self._status.set_status(self.CHASER)
-        self._skill.inactive()
-        self._skill = DashSkill(self)
+        self._status.be_chaser()
+        self.change_skill(DashSkill(self._status))
+
+    def is_runner(self):
+        return self.is_chaser()
 
     def be_runner(self):
         self._sprite.change_glyph(self.RUNNER_GLYPH)
-        self._status.unset_status(self.CHASER)
-        self._skill.inactive()
-        self._skill = InvisibleSkill(self)
+        self._status.be_runner()
+        self.change_skill(InvisibleSkill(self._status))
 
-    def wait(self, wait_frame):
-        self.be_waiting()
-        Schedule(wait_frame).last(self.be_nowaiting)
-
-    def be_waiting(self):
-        self._status.set_status(self.WAIT)
-
-    def be_nowaiting(self):
-        self._status.unset_status(self.WAIT)
+    def wait(self):
+        self._status.wait_walk_frame()
 
     def is_waiting(self):
-        return self._status.is_active(self.WAIT)
-
-    def be_force_visible(self):
-        self._status.set_status(self.FORCE_VISIBLE)
-
-    def be_no_force_visible(self):
-        self._status.unset_status(self.FORCE_VISIBLE)
-
-    def is_force_visible(self):
-        return self._status.is_active(self.FORCE_VISIBLE)
+        return self._status.is_waiting()
 
     def touch(self, other):
-        if not self.is_chaser(): return
+        if self._status.is_runner(): return
         SoundEffect.play_touch()
         self.be_runner()
         other.be_chaser()
         other.freeze()
 
     def freeze(self, frame=150):
-        self.wait(frame)
+        self._status.wait(frame)
         self.flush(Color.BLACK, frame=frame, interval=5)
 
     def flush(self, color, interval=3, frame=150):
@@ -259,6 +203,88 @@ class Actor(object):
 
     def unuse_skill(self):
         self._skill.inactive()
+
+    def change_skill(self, new_skill):
+        self._skill.inactive()
+        self._skill = new_skill
+
+class Status(object):
+    CHASER, WAIT, INVISIBLE, FORCE_VISIBLE = range(4)
+    def __init__(self):
+        self._properties = Property([self.CHASER, self.WAIT, self.INVISIBLE, self.FORCE_VISIBLE])
+        self._walk_wait_frame = 3
+        self._life = 100
+
+    def wait_walk_frame(self):
+        self.wait(self._walk_wait_frame)
+
+    def life(self):
+        return self._life
+
+    def damage(self, value):
+        self._life -= value
+        if self._life < 0: self._life = 0
+
+    def be_invisible(self):
+        self._properties.set_properties(self.INVISIBLE)
+
+    def be_visible(self):
+        self._properties.unset_properties(self.INVISIBLE)
+
+    def is_invisible(self):
+        return self._properties.is_active(self.INVISIBLE)
+
+    def walking(self):
+        self._walk_wait_frame = 2
+
+    def running(self):
+        self._walk_wait_frame = 1
+
+    def be_chaser(self):
+        self._properties.set_properties(self.CHASER)
+
+    def be_runner(self):
+        self._properties.unset_properties(self.CHASER)
+
+    def is_chaser(self):
+        return self._properties.is_active(self.CHASER)
+
+    def is_runner(self):
+        return not self.is_chaser()
+
+    def wait(self, wait_frame):
+        self._properties.set_properties(self.WAIT)
+        Schedule(wait_frame).last(self.no_wait)
+
+    def no_wait(self):
+        self._properties.unset_properties(self.WAIT)
+
+    def is_waiting(self):
+        return self._properties.is_active(self.WAIT)
+
+    def be_no_force_visible(self):
+        self._properties.unset_properties(self.FORCE_VISIBLE)
+
+    def is_force_visible(self):
+        return self._properties.is_active(self.FORCE_VISIBLE)
+
+class Property(object):
+    def __init__(self, properties):
+        self._properties = dict()
+        for name in properties: self._properties[name] = 0
+
+    def is_active(self, name):
+        return self._properties[name] > 0
+
+    def is_inactive(self, name):
+        return not self.active(name)
+
+    def set_properties(self, name):
+        self._properties[name] += 1
+
+    def unset_properties(self, name):
+        if self._properties[name] is 0: return
+        self._properties[name] -= 1
 
 class Counter(object):
     def __init__(self, end):
@@ -399,7 +425,7 @@ class WalkCommand(MapHandler):
             self._actor.touch(other)
             return
         self._actor_map.move_actor(self._actor, direction)
-        self._actor.wait_walk()
+        self._actor.wait()
 
 class WalkMode(PlayerHandler, MapHandler):
     def __init__(self, actor):
