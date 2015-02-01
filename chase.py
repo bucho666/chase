@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-
 from pygameframework import Game
 from pygameframework import GridWindow
 from pygameframework import Color
@@ -8,8 +7,22 @@ from pygameframework import Coordinate
 from pygameframework import Direction
 from pygameframework import Key
 from pygameframework import Schedule
+from pygameframework import Sound
 import sys
 import random
+
+class SoundEffect(object):
+    @classmethod
+    def play_touch(cls):
+        Sound.play('touch.ogg')
+
+    @classmethod
+    def play_join(cls):
+        Sound.play('join.ogg')
+
+    @classmethod
+    def play_bgm(cls):
+        Sound.play_bgm('bgm.ogg')
 
 class AsciiTileLocator(object):
     sheet = None
@@ -228,6 +241,7 @@ class Actor(object):
 
     def touch(self, other):
         if not self.is_chaser(): return
+        SoundEffect.play_touch()
         self.be_runner()
         other.be_chaser()
         other.freeze()
@@ -394,7 +408,10 @@ class WalkMode(PlayerHandler, MapHandler):
         self._walk = WalkCommand(actor)
 
     def initialize(self):
-        if self._actor_map.count_actors() is 0: self._actor.be_chaser()
+        if self._actor_map.count_actors() is 0:
+            self._actor.be_chaser()
+        if self._actor_map.count_actors() is 1:
+            SoundEffect.play_bgm()
         self._actor_map.put(self.choice_random_open_coordinate(),
             self._actor)
         for actor in self._actor_map.actors():
@@ -429,6 +446,7 @@ class ReadyMode(PlayerHandler):
     def handle(self, controller, keyboard=None):
         down_keys =  controller.pressed_keys()
         if 'start' not in down_keys: return
+        SoundEffect.play_join()
         self.change_handle(self, WalkMode(self._actor).initialize())
 
 class Chase(Game, MapHandler):
