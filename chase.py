@@ -123,29 +123,37 @@ class InvisibleSkill(object):
     def __init__(self, actor):
         self._actor = actor
         self._active = False
+        self._counter = Counter(40)
 
     def active(self):
-        if self._active: return
-        self._actor.be_invisible()
-        self._active = True
+        if not self._active:
+            self._actor.be_invisible()
+            self._active = True
+        self._counter.tick()
+        if self._counter.is_over(): self._actor.damage(1)
 
     def inactive(self):
         self._actor.be_visible()
         self._active = False
+        self._counter.reset()
 
 class DashSkill(object):
     def __init__(self, actor):
         self._actor = actor
         self._active = False
+        self._counter = Counter(40)
 
     def active(self):
-        if self._active: return
-        self._actor.running()
-        self._active = True
+        if not self._active:
+            self._actor.running()
+            self._active = True
+        self._counter.tick()
+        if self._counter.is_over(): self._actor.damage(1)
 
     def inactive(self):
         self._actor.walking()
         self._active = False
+        self._counter.reset()
 
 class Actor(object):
     WAIT_TIME_MAX = 16
@@ -156,10 +164,22 @@ class Actor(object):
         self._sprite = Sprite(self.RUNNER_GLYPH, self.PLAYER_COLOR[player_id])
         self._status = Status()
         self._skill = InvisibleSkill(self._status)
+        self._player_id = player_id + 1
+
+    def status(self):
+        return self._status
 
     def render(self, screen, position):
         if self._status.is_invisible(): return
         self._sprite.render(screen, position)
+
+    def render_status(self, screen, position):
+        line = str(self._status)
+        color = self._sprite.color()
+        screen.write('[%sP] %s' % (self._player_id, line), position, color)
+
+    def be_playing(self):
+        self._status.be_playing()
 
     def is_chaser(self):
         return self._status.is_chaser()
@@ -188,7 +208,11 @@ class Actor(object):
         SoundEffect.play_touch()
         self.be_runner()
         other.be_chaser()
+        other.damage(10)
         other.freeze()
+
+    def damage(self, value):
+        self._status.damage(value)
 
     def freeze(self, frame=150):
         self._status.wait(frame)
@@ -209,11 +233,17 @@ class Actor(object):
         self._skill = new_skill
 
 class Status(object):
-    CHASER, WAIT, INVISIBLE, FORCE_VISIBLE = range(4)
+    PLAYING, CHASER, WAIT, INVISIBLE, FORCE_VISIBLE = range(5)
     def __init__(self):
-        self._properties = Property([self.CHASER, self.WAIT, self.INVISIBLE, self.FORCE_VISIBLE])
+        self._properties = Property(
+                [self.PLAYING, self.CHASER, self.WAIT, self.INVISIBLE, self.FORCE_VISIBLE])
         self._walk_wait_frame = 3
         self._life = 100
+
+    def __str__(self):
+        if self._properties.is_active(self.PLAYING):
+            return 'Life: %-3d' % self._life
+        return 'press start key'
 
     def wait_walk_frame(self):
         self.wait(self._walk_wait_frame)
@@ -224,6 +254,9 @@ class Status(object):
     def damage(self, value):
         self._life -= value
         if self._life < 0: self._life = 0
+
+    def be_playing(self):
+        self._properties.set_properties(self.PLAYING)
 
     def be_invisible(self):
         self._properties.set_properties(self.INVISIBLE)
@@ -291,12 +324,18 @@ class Counter(object):
         self._end = end
         self._current = 0
 
+    def __str__(self):
+        return str(self._current)
+
     def tick(self):
         self._current += 1
         self._current %= self._end
 
     def is_over(self):
         return self._current is 0
+
+    def reset(self):
+        self._current = 0
 
 class Flushing(object):
     def __init__(self, sprite, color, interval):
@@ -316,7 +355,7 @@ class Flushing(object):
     def stop(self):
         self._sprite.change_color(self._original_color)
 
-class Sprite(object):
+class Sprite(object): # TODO original_color
     def __init__(self, glyph, color):
         self._graphic = AsciiTileLocator.get_tile(glyph, color)
         self._glyph = glyph
@@ -442,7 +481,7 @@ class WalkMode(PlayerHandler, MapHandler):
             self._actor)
         for actor in self._actor_map.actors():
             if actor is self._actor: continue
-            if actor.is_runner(): continue
+            if not actor.is_chaser(): continue
             actor.freeze()
         self._actor.flush(Color.WHITE, interval=2, frame=60)
         return self
@@ -473,7 +512,21 @@ class ReadyMode(PlayerHandler):
         down_keys =  controller.pressed_keys()
         if 'start' not in down_keys: return
         SoundEffect.play_join()
+        self._actor.be_playing()
         self.change_handle(self, WalkMode(self._actor).initialize())
+
+class StatusWindow(object):
+    def __init__(self, actors, position):
+        self._actors = actors
+        self._position = position
+
+    def render(self, window):
+        x, y = self._position.xy()
+        for index, actor in enumerate(self._actors):
+            actor.render_status(window, Coordinate(x, index+y))
+
+    def add(self, status):
+        self._status.append(status)
 
 class Chase(Game, MapHandler):
     POSITION = Coordinate(0, 0)
@@ -482,8 +535,9 @@ class Chase(Game, MapHandler):
     def __init__(self):
         Game.__init__(self)
         MapHandler.__init__(self)
-        self._window = None
         self._handlers = []
+        self._window = None
+        self._status_window = None
 
     def initialize(self):
         tile_sheet = AsciiTileSheet().initialize('Courier New', 18)
@@ -494,6 +548,9 @@ class Chase(Game, MapHandler):
         actors = [Actor(player_id) for player_id in range(self.MAX_PLAYER)]
         handlers = [ReadyMode(actor) for actor in actors]
         PlayerHandler.set_handlers(handlers)
+        self._status_window = StatusWindow(
+                [actor for actor in actors],\
+                Coordinate(0, 18))
 
     def update(self):
         if Key.ESCAPE in self._keyboard.pressed_keys(): sys.exit()
@@ -507,6 +564,7 @@ class Chase(Game, MapHandler):
         self._screen.fill()
         self._terrain_map.render(self._window)
         self._actor_map.render(self._window)
+        self._status_window.render(self._window)
 
 if __name__ == '__main__':
     from pygameframework.framework import GameRunner
