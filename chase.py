@@ -119,41 +119,43 @@ class ActorMap(object):
         c = self._coordinate[actor]
         self.put(c+direction, self.pickup(c))
 
-class InvisibleSkill(object):
-    def __init__(self, actor):
+class Skill(object):
+    def __init__(self, actor, interval):
         self._actor = actor
         self._active = False
-        self._counter = Counter(40)
+        self._counter = Counter(interval)
 
     def active(self):
         if not self._active:
-            self._actor.be_invisible()
+            self._apply()
             self._active = True
         self._counter.tick()
         if self._counter.is_over(): self._actor.damage(1)
 
     def inactive(self):
+        self._not_apply()
+        self._active = False
+        self._counter.reset()
+
+class InvisibleSkill(Skill):
+    def __init__(self, actor):
+        Skill.__init__(self, actor, 40)
+
+    def _apply(self):
+        self._actor.be_invisible()
+
+    def _not_apply(self):
         self._actor.be_visible()
-        self._active = False
-        self._counter.reset()
 
-class DashSkill(object):
+class DashSkill(Skill):
     def __init__(self, actor):
-        self._actor = actor
-        self._active = False
-        self._counter = Counter(40)
+        Skill.__init__(self, actor, 40)
 
-    def active(self):
-        if not self._active:
-            self._actor.running()
-            self._active = True
-        self._counter.tick()
-        if self._counter.is_over(): self._actor.damage(1)
+    def _apply(self):
+        self._actor.running()
 
-    def inactive(self):
+    def _not_apply(self):
         self._actor.walking()
-        self._active = False
-        self._counter.reset()
 
 class Actor(object):
     WAIT_TIME_MAX = 16
@@ -180,6 +182,9 @@ class Actor(object):
 
     def be_playing(self):
         self._status.be_playing()
+
+    def is_dead(self):
+        return self._status.is_dead()
 
     def is_chaser(self):
         return self._status.is_chaser()
@@ -238,7 +243,7 @@ class Status(object):
         self._properties = Property(
                 [self.PLAYING, self.CHASER, self.WAIT, self.INVISIBLE, self.FORCE_VISIBLE])
         self._walk_wait_frame = 3
-        self._life = 100
+        self._life = 1
 
     def __str__(self):
         if self._properties.is_active(self.PLAYING):
@@ -248,8 +253,8 @@ class Status(object):
     def wait_walk_frame(self):
         self.wait(self._walk_wait_frame)
 
-    def life(self):
-        return self._life
+    def is_dead(self):
+        return self._life is 0
 
     def damage(self, value):
         self._life -= value
@@ -340,26 +345,26 @@ class Counter(object):
 class Flushing(object):
     def __init__(self, sprite, color, interval):
         self._sprite = sprite
-        self._original_color = sprite.color()
         self._change_color = color
         self._frame_counter = Counter(interval)
 
     def update(self):
         self._frame_counter.tick()
         if not self._frame_counter.is_over(): return
-        if self._sprite.color() is self._original_color:
-            self._sprite.change_color(self._change_color)
+        if self._sprite.color_changed():
+            self._sprite.reset_color()
         else:
-            self._sprite.change_color(self._original_color)
+            self._sprite.change_color(self._change_color)
 
     def stop(self):
-        self._sprite.change_color(self._original_color)
+        self._sprite.reset_color()
 
 class Sprite(object): # TODO original_color
     def __init__(self, glyph, color):
         self._graphic = AsciiTileLocator.get_tile(glyph, color)
         self._glyph = glyph
         self._color = color
+        self._original_color = color
 
     def color(self):
         return self._color
@@ -370,6 +375,12 @@ class Sprite(object): # TODO original_color
     def change_color(self, new_color):
         self._color = new_color
         self._update()
+
+    def color_changed(self):
+        return self._original_color != self._color
+
+    def reset_color(self):
+        self.change_color(self._original_color)
 
     def change_glyph(self, new_glyph):
         self._glyph = new_glyph
@@ -493,6 +504,7 @@ class WalkMode(PlayerHandler, MapHandler):
         if ord('q') in down_keys: sys.exit()
 
     def _actor_move(self, down_keys):
+        if self._actor.is_dead(): return
         if set(['up', 'left']) <= down_keys: self._walk.execute(Direction.UPPER_LEFT)
         elif set(['up', 'right']) <= down_keys: self._walk.execute(Direction.UPPER_RIGHT)
         elif set(['down', 'left']) <= down_keys: self._walk.execute(Direction.LOWER_LEFT)
