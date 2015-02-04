@@ -359,7 +359,7 @@ class Flushing(object):
     def stop(self):
         self._sprite.reset_color()
 
-class Sprite(object): # TODO original_color
+class Sprite(object):
     def __init__(self, glyph, color):
         self._graphic = AsciiTileLocator.get_tile(glyph, color)
         self._glyph = glyph
