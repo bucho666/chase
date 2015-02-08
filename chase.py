@@ -168,6 +168,9 @@ class Actor(object):
         self._skill = InvisibleSkill(self._status)
         self._player_id = player_id + 1
 
+    def reset(self):
+        self._status = Status()
+
     def status(self):
         return self._status
 
@@ -243,7 +246,7 @@ class Status(object):
         self._properties = Property(
                 [self.PLAYING, self.CHASER, self.WAIT, self.INVISIBLE, self.FORCE_VISIBLE])
         self._walk_wait_frame = 3
-        self._life = 100
+        self._life = 10
 
     def __str__(self):
         if self._properties.is_active(self.PLAYING):
@@ -504,7 +507,6 @@ class WalkMode(PlayerHandler, MapHandler):
         if ord('q') in down_keys: sys.exit()
 
     def _actor_move(self, down_keys):
-        if self._actor.is_dead(): return
         if set(['up', 'left']) <= down_keys: self._walk.execute(Direction.UPPER_LEFT)
         elif set(['up', 'right']) <= down_keys: self._walk.execute(Direction.UPPER_RIGHT)
         elif set(['down', 'left']) <= down_keys: self._walk.execute(Direction.LOWER_LEFT)
@@ -540,6 +542,106 @@ class StatusWindow(object):
     def add(self, status):
         self._status.append(status)
 
+
+# TODO framework commit
+# TODO Scene管理を考える
+# TODO 最初に生成しておかないと、リソースの受け渡しが面倒い
+# TODO 最初に生成するなら、生成したシーンにアクセスできる構造が必要
+# TODO Scenesを作成。すべてのシーンを辞書で保持、変更は関数で(IDなどは内部に隠蔽)
+class Scene(object):
+    (TITLE, CHASE, RANKING) = range(3)
+    _active_scene = None
+    _scenes = dict()
+
+    @classmethod
+    def register_title_scene(cls, scene):
+        cls._scenes[cls.TITLE] = scene
+
+    @classmethod
+    def register_chase_scene(cls, scene):
+        cls._scenes[cls.CHASE] = scene
+
+    @classmethod
+    def register_ranking_scene(cls, scene):
+        cls._scenes[cls.RANKING] = scene
+
+    @classmethod
+    def change_title_scene(cls):
+        cls._active_scene = cls._scenes[cls.TITLE]
+
+    @classmethod
+    def change_chase_scene(cls):
+        cls._active_scene = cls._scenes[cls.CHASE]
+
+    @classmethod
+    def change_ranking_scene(cls):
+        cls._active_scene = cls._scenes[cls.RANKING]
+
+    @classmethod
+    def render(cls, screen):
+        cls._active_scene.render(screen)
+
+    @classmethod
+    def update(cls, controller, keyboard):
+        cls._active_scene.update(controller, keyboard)
+
+class TitleScene(Scene):
+    def render(self, screen):
+        screen.fill()
+        screen.write('Chaise', Coordinate(0, 0), Color.OLIVE)
+
+    def update(self, controllers, keyboard):
+        for controller in controllers:
+            down_keys = controller.down_keys()
+            if not down_keys: continue
+            Scene.change_chase_scene()
+
+class RankingScene(Scene):
+    def __init__(self, actors):
+        self._actors = actors
+
+    def render(self, screen):
+        screen.fill()
+        screen.write('Ranking', Coordinate(0, 0), Color.OLIVE)
+
+    def update(self, controllers, keyboard):
+        for controller in controllers:
+            down_keys = controller.down_keys()
+            if set(['start', 'skill']) > down_keys: continue
+            self._actors.reset()
+            Scene.change_title_scene()
+
+class ChaceScene(MapHandler, Scene):
+    def __init__(self, status_window, actors):
+        MapHandler.__init__(self)
+        self._status_window = status_window
+        self._actors = actors
+
+    def update(self, controllers, keyboard):
+        PlayerHandler.update(controllers, keyboard)
+        if self._actors.exists_deadman():
+            Scene.change_ranking_scene()
+
+    def render(self, screen):
+        screen.fill()
+        self._terrain_map.render(screen)
+        self._actor_map.render(screen)
+        self._status_window.render(screen)
+
+class Actors(object):
+    def __init__(self, menbers):
+        self._menbers = menbers
+
+    def exists_deadman(self):
+        for menber in self._menbers:
+            if menber.is_dead():
+                return True
+        return False
+
+    def reset(self):
+        for menber in self._menbers:
+            menber.reset()
+
 class Chase(Game, MapHandler):
     POSITION = Coordinate(0, 0)
     GRID_SIZE = Coordinate(10, 18)
@@ -547,36 +649,34 @@ class Chase(Game, MapHandler):
     def __init__(self):
         Game.__init__(self)
         MapHandler.__init__(self)
-        self._handlers = []
-        self._window = None
-        self._status_window = None
+        self._screen = None
 
-    def initialize(self):
+    def initialize(self, screen):
         tile_sheet = AsciiTileSheet().initialize('Courier New', 18)
         AsciiTileLocator.provide(tile_sheet)
         MapHandler.initialize()
         TerrainMapHandler.load('map.data')
         DungeonGenerator().generate()
-        actors = [Actor(player_id) for player_id in range(self.MAX_PLAYER)]
-        handlers = [ReadyMode(actor) for actor in actors]
+        actor_list = [Actor(player_id) for player_id in range(self.MAX_PLAYER)]
+        # TODO Rankingシーンからチェンジ
+        handlers = [ReadyMode(actor) for actor in actor_list]
         PlayerHandler.set_handlers(handlers)
-        self._status_window = StatusWindow(
-                [actor for actor in actors],\
+        status_window = StatusWindow(
+                [actor for actor in actor_list],\
                 Coordinate(0, 18))
+        self._screen = window = GridWindow(screen, self.POSITION, self.GRID_SIZE)
+        Scene.register_title_scene(TitleScene())
+        actors = Actors(actor_list)
+        Scene.register_chase_scene(ChaceScene(status_window, actors))
+        Scene.register_ranking_scene(RankingScene(actors))
+        Scene.change_title_scene()
 
     def update(self):
         if Key.ESCAPE in self._keyboard.pressed_keys(): sys.exit()
-        PlayerHandler.update(self._controllers, self._keyboard)
-
-    def set_screen(self, screen):
-        self._screen = screen
-        self._window = GridWindow(screen, self.POSITION, self.GRID_SIZE)
+        Scene.update(self._controllers, self._keyboard)
 
     def render(self):
-        self._screen.fill()
-        self._terrain_map.render(self._window)
-        self._actor_map.render(self._window)
-        self._status_window.render(self._window)
+        Scene.render(self._screen)
 
 if __name__ == '__main__':
     from pygameframework.framework import GameRunner
