@@ -244,8 +244,6 @@ class Property(object):
         self._properties[name] -= 1
 
 class Actors(object):
-    # TODO Rankingクラス作成
-    _colors = (Color.YELLOW, Color.WHITE, Color.SILVER, Color.GRAY)
 
     def __init__(self, members):
         self._members = members
@@ -260,23 +258,30 @@ class Actors(object):
         for member in self._members:
             member.reset()
 
-    def render_ranking(self, screen, pos):
-        for color, line in self.ranking_list():
+    def ranking(self):
+        return Ranking(self._members)
+
+class Ranking(object):
+    _tag = ('TOP', '2nd', '3rd', '4th')
+    _tag_color = (Color.YELLOW, Color.WHITE, Color.SILVER, Color.GRAY)
+    def __init__(self, members):
+        self._members = members
+
+    def render(self, screen, pos):
+        for color, line in self._ranking_list():
             screen.write(line, pos, color,)
             pos += Direction.DOWN
 
-    def ranking_list(self):
-        # TODO クラス化？
+    def _ranking_list(self):
         result = []
-        tag = ('TOP', '2nd', '3rd', '4th')
         rank = 0
         current_life = None
         for member in sorted(self._members, key=lambda m: m.life(), reverse=True):
             if not member.is_playing(): continue
             life = member.life()
             if current_life is not None and current_life != life: rank += 1
-            line = '[%s] %s' % (tag[rank], str(member))
-            result.append((self._colors[rank], line))
+            line = '[%s] %s' % (self._tag[rank], str(member))
+            result.append((self._tag_color[rank], line))
             current_life = life
         return result
 
@@ -334,5 +339,3 @@ class Flushing(object):
 
     def stop(self):
         self._sprite.reset_color()
-
-

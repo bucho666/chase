@@ -62,11 +62,12 @@ class TitleScene(Scene):
 class RankingScene(Scene):
     def __init__(self, actors):
         self._actors = actors
+        self._ranking = actors.ranking()
 
     def render(self, screen):
         screen.fill()
         screen.write('Ranking', Coordinate(0, 0), Color.OLIVE)
-        self._actors.render_ranking(screen, Coordinate(0, 2))
+        self._ranking.render(screen, Coordinate(0, 2))
         screen.write('Press [Start]+[Skill] Key', Coordinate(0, 10), Color.YELLOW)
 
     def update(self, controllers, keyboard):
