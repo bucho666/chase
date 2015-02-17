@@ -105,7 +105,7 @@ class ReadyMode(PlayerHandler, StageHandler):
         StageHandler.remove_actor(self._actor)
 
     def handle(self, controller, keyboard=None):
-        down_keys =  controller.pressed_keys()
+        down_keys =  controller.down_keys()
         if 'start' not in down_keys: return
         SoundEffect.play_join()
         self._actor.be_playing()

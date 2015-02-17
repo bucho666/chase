@@ -53,6 +53,7 @@ class TitleScene(Scene):
         screen.write('Chaise', Coordinate(0, 0), Color.OLIVE)
 
     def update(self, controllers, keyboard):
+        colors = (Color.YELLOW, Color.GREEN, Color.BLUE, Color.RED)
         for controller in controllers:
             down_keys = controller.down_keys()
             if not down_keys: continue
@@ -65,12 +66,13 @@ class RankingScene(Scene):
     def render(self, screen):
         screen.fill()
         screen.write('Ranking', Coordinate(0, 0), Color.OLIVE)
-        # TODO Lifeでソートして表示する。
+        self._actors.render_ranking(screen, Coordinate(0, 2))
+        screen.write('Press [Start]+[Skill] Key', Coordinate(0, 10), Color.YELLOW)
 
     def update(self, controllers, keyboard):
         for controller in controllers:
-            down_keys = controller.down_keys()
-            if set(['start', 'skill']) > down_keys: continue
+            down_keys = controller.pressed_keys()
+            if set(['start', 'skill']) != down_keys: continue
             self._actors.reset()
             PlayerHandler.reset()
             Scene.change_chase_scene()

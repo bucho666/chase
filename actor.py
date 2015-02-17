@@ -4,6 +4,7 @@ from pygameframework import Schedule
 from sound import SoundEffect
 from sprite import Sprite
 from counter import Counter
+from pygameframework import Direction
 
 class ActorMap(object):
     def __init__(self):
@@ -71,8 +72,14 @@ class Actor(object):
         self._status = Status()
         self.be_runner()
 
+    def __str__(self):
+        return '%dP %s' % (self._player_id, str(self._status))
+
     def status(self):
         return self._status
+
+    def life(self):
+        return self._status.life()
 
     def render(self, screen, position):
         if self._status.is_invisible(): return
@@ -85,6 +92,9 @@ class Actor(object):
 
     def be_playing(self):
         self._status.be_playing()
+
+    def is_playing(self):
+        return self._status.is_playing()
 
     def is_dead(self):
         return self._status.is_dead()
@@ -146,12 +156,15 @@ class Status(object):
         self._properties = Property(
                 [self.PLAYING, self.CHASER, self.WAIT, self.INVISIBLE, self.FORCE_VISIBLE])
         self._walk_wait_frame = 3
-        self._life = 1
+        self._life = 10
 
     def __str__(self):
         if self._properties.is_active(self.PLAYING):
             return 'Life: %-3d' % self._life
         return 'press start key'
+
+    def life(self):
+        return self._life
 
     def wait_walk_frame(self):
         self.wait(self._walk_wait_frame)
@@ -165,6 +178,9 @@ class Status(object):
 
     def be_playing(self):
         self._properties.set_properties(self.PLAYING)
+
+    def is_playing(self):
+        return self._properties.is_active(self.PLAYING)
 
     def be_invisible(self):
         self._properties.set_properties(self.INVISIBLE)
@@ -228,6 +244,9 @@ class Property(object):
         self._properties[name] -= 1
 
 class Actors(object):
+    # TODO Rankingクラス作成
+    _colors = (Color.YELLOW, Color.WHITE, Color.SILVER, Color.GRAY)
+
     def __init__(self, members):
         self._members = members
 
@@ -240,6 +259,26 @@ class Actors(object):
     def reset(self):
         for member in self._members:
             member.reset()
+
+    def render_ranking(self, screen, pos):
+        for color, line in self.ranking_list():
+            screen.write(line, pos, color,)
+            pos += Direction.DOWN
+
+    def ranking_list(self):
+        # TODO クラス化？
+        result = []
+        tag = ('TOP', '2nd', '3rd', '4th')
+        rank = 0
+        current_life = None
+        for member in sorted(self._members, key=lambda m: m.life(), reverse=True):
+            if not member.is_playing(): continue
+            life = member.life()
+            if current_life is not None and current_life != life: rank += 1
+            line = '[%s] %s' % (tag[rank], str(member))
+            result.append((self._colors[rank], line))
+            current_life = life
+        return result
 
 class Skill(object):
     def __init__(self, actor, interval):
